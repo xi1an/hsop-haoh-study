@@ -33,7 +33,7 @@ function statusFromProgress(progress) {
 
 function App() {
   const apps = window.hsopApps;
-  const [activeAppId, setActiveAppId] = useState("portal");
+  const [modalAppId, setModalAppId] = useState("");
   const [category, setCategory] = useState("全部");
   const [appQuery, setAppQuery] = useState("");
   const [resourceQuery, setResourceQuery] = useState("");
@@ -52,7 +52,7 @@ function App() {
   );
   const taskDialogRef = useRef(null);
 
-  const activeApp = apps.find((app) => app.id === activeAppId);
+  const modalApp = apps.find((app) => app.id === modalAppId);
 
   useEffect(() => {
     localStorage.setItem(taskStorageKey, JSON.stringify(tasks));
@@ -69,6 +69,26 @@ function App() {
   useEffect(() => {
     localStorage.setItem(densityStorageKey, density);
   }, [density]);
+
+  useEffect(() => {
+    if (!modalAppId) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setModalAppId("");
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [modalAppId]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -108,7 +128,7 @@ function App() {
     const app = apps.find((item) => item.id === appId);
     if (!app) return;
 
-    setActiveAppId(appId);
+    setModalAppId(appId);
     setRecentAppIds((current) => [appId, ...current.filter((id) => id !== appId)].slice(0, 6));
   }
 
@@ -172,7 +192,7 @@ function App() {
   return (
     <div className="app portal-app" data-density={density}>
       <header className="topbar">
-        <button className="brand brand-button" type="button" onClick={() => setActiveAppId("portal")}>
+        <button className="brand brand-button" type="button" onClick={() => setModalAppId("")}>
           <span className="brand-code">HSOP</span>
           <span>
             <span className="brand-title">昊昊学习</span>
@@ -181,20 +201,12 @@ function App() {
         </button>
         <div className="topbar-center">
           <div className="date-strip">
-            <span>{activeApp ? activeApp.category : "门户首页"}</span>
-            <strong>{activeApp ? activeApp.title : "应用启动台"}</strong>
-            <span>{activeApp ? activeApp.status : "配置表驱动"}</span>
+            <span>门户首页</span>
+            <strong>应用启动台</strong>
+            <span>{apps.length} 个功能</span>
           </div>
         </div>
         <div className="topbar-actions">
-          {activeAppId !== "portal" && (
-            <button className="secondary-button" type="button" onClick={() => setActiveAppId("portal")}>
-              <span className="button-icon">
-                <HSOPIcon name="arrowLeft" />
-              </span>
-              返回门户
-            </button>
-          )}
           <button
             className="secondary-button"
             type="button"
@@ -210,65 +222,66 @@ function App() {
       </header>
 
       <div className="app-shell portal-shell">
-        <aside className="sidebar">
-          <PortalProfile apps={apps} />
-          <nav className="nav-section" aria-label="门户应用">
-            <button
-              className={`nav-button ${activeAppId === "portal" ? "active" : ""}`}
-              type="button"
-              onClick={() => setActiveAppId("portal")}
-            >
-              <HSOPIcon name="apps" />
-              <span>应用启动台</span>
-              <span className="nav-count">{apps.length}</span>
-            </button>
-            {apps.map((app) => (
-              <button
-                className={`nav-button ${activeAppId === app.id ? "active" : ""}`}
-                key={app.id}
-                type="button"
-                onClick={() => openApp(app.id)}
-              >
-                <HSOPIcon name={app.icon} />
-                <span>{app.shortTitle}</span>
-                <span className="nav-count">{app.status}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="sidebar-note">
-            <strong>新增应用方式</strong>
-            以后新增应用，优先在应用清单里补配置，再放入对应应用文件夹。
-          </div>
-        </aside>
-
         <main className="main-panel portal-main">
-          {activeAppId === "portal" && (
-            <AppLauncher
-              apps={apps}
-              onOpen={openApp}
-            />
-          )}
-          {activeAppId === "corporate-guide" && (
-            <CorporateGuideApp onToast={setToast} />
-          )}
-          {activeApp?.launchType === "embedded" && (
-            <EmbeddedApp app={activeApp} />
-          )}
-          {activeAppId === "future-tools" && activeApp && (
-            <FutureToolsApp app={activeApp} />
-          )}
+          <AppLauncher apps={apps} onOpen={openApp} />
         </main>
-
-        <RightRail
-          activeApp={activeApp}
-          apps={apps}
-          onOpen={openApp}
-        />
       </div>
+
+      {modalApp && (
+        <AppModalHost
+          app={modalApp}
+          onClose={() => setModalAppId("")}
+          onToast={setToast}
+        />
+      )}
 
       <div className={`toast ${toast ? "show" : ""}`} role="status" aria-live="polite">
         {toast}
       </div>
+    </div>
+  );
+}
+
+function AppModalHost({ app, onClose, onToast }) {
+  function handleBackdropMouseDown(event) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
+  return (
+    <div
+      className="app-modal-backdrop"
+      role="presentation"
+      onMouseDown={handleBackdropMouseDown}
+    >
+      <section
+        className={`app-modal app-modal-${app.id}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="appModalTitle"
+      >
+        <div className="app-modal-head">
+          <div className="app-modal-title">
+            <span className="module-icon">
+              <HSOPIcon name={app.icon} />
+            </span>
+            <div>
+              <p>{app.category}</p>
+              <h2 id="appModalTitle">{app.title}</h2>
+              <span>{app.summary}</span>
+            </div>
+          </div>
+          <button className="icon-button" type="button" aria-label="关闭弹窗" onClick={onClose}>
+            <HSOPIcon name="close" />
+          </button>
+        </div>
+        <div className="app-modal-content">
+          {app.id === "corporate-guide" && <CorporateGuideApp onToast={onToast} />}
+          {app.launchType === "embedded" && <EmbeddedApp app={app} />}
+          {app.id === "future-tools" && <FutureToolsApp app={app} />}
+        </div>
+      </section>
     </div>
   );
 }

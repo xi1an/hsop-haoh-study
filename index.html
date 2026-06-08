@@ -181,6 +181,11 @@
         margin: 18px auto 36px;
       }
 
+      .portal-shell {
+        grid-template-columns: minmax(0, 1fr);
+        width: min(1120px, calc(100% - 32px));
+      }
+
       .sidebar,
       .right-rail,
       .main-panel {
@@ -334,6 +339,10 @@
       .main-panel {
         min-height: calc(100vh - 108px);
         overflow: hidden;
+      }
+
+      .portal-main {
+        min-height: auto;
       }
 
       .screen {
@@ -927,6 +936,96 @@
 
       .task-dialog::backdrop {
         background: rgba(17, 24, 39, 0.42);
+      }
+
+      .app-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(17, 24, 39, 0.54);
+        backdrop-filter: blur(8px);
+      }
+
+      .app-modal {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: min(1120px, 100%);
+        max-height: 90vh;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.42);
+        border-radius: 18px;
+        background: var(--paper);
+        box-shadow: 0 28px 70px rgba(17, 24, 39, 0.34);
+      }
+
+      .app-modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.98);
+      }
+
+      .app-modal-title {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .app-modal-title p,
+      .app-modal-title h2,
+      .app-modal-title span {
+        margin: 0;
+      }
+
+      .app-modal-title p {
+        color: var(--red);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .app-modal-title h2 {
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      .app-modal-title span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.45;
+      }
+
+      .app-modal-content {
+        min-height: 0;
+        overflow: auto;
+        background: var(--paper-soft);
+      }
+
+      .app-modal-content .screen {
+        padding: 20px;
+      }
+
+      .app-modal-content .embedded-screen {
+        padding: 16px;
+      }
+
+      .app-modal-content .embedded-frame-wrap {
+        min-height: 0;
+      }
+
+      .app-modal-content .embedded-frame {
+        height: min(720px, calc(90vh - 214px));
+        min-height: 620px;
       }
 
       .dialog-content {
@@ -1571,6 +1670,11 @@
           grid-template-columns: var(--sidebar) minmax(0, 1fr);
         }
 
+        .portal-shell {
+          grid-template-columns: minmax(0, 1fr);
+          width: min(1120px, calc(100% - 32px));
+        }
+
         .right-rail {
           grid-column: 1 / -1;
           position: static;
@@ -1605,9 +1709,56 @@
           width: min(100% - 24px, 1500px);
         }
 
+        .portal-shell {
+          width: min(100% - 24px, 1120px);
+        }
+
         .sidebar {
           position: static;
           max-height: none;
+        }
+
+        .app-modal-backdrop {
+          align-items: stretch;
+          padding: 10px;
+        }
+
+        .app-modal {
+          width: 100%;
+          height: calc(100dvh - 20px);
+          max-height: none;
+          border-radius: 14px;
+        }
+
+        .app-modal-head {
+          align-items: flex-start;
+          padding: 12px;
+        }
+
+        .app-modal-title {
+          align-items: flex-start;
+        }
+
+        .app-modal-title .module-icon {
+          width: 38px;
+          height: 38px;
+        }
+
+        .app-modal-title h2 {
+          font-size: 19px;
+        }
+
+        .app-modal-title span {
+          font-size: 12px;
+        }
+
+        .app-modal-content .screen {
+          padding: 16px;
+        }
+
+        .app-modal-content .embedded-frame {
+          height: calc(100dvh - 172px);
+          min-height: 580px;
         }
 
         .nav-section {
@@ -1735,6 +1886,15 @@
         .embedded-frame-wrap,
         .embedded-frame {
           min-height: 720px;
+        }
+
+        .app-modal-content .embedded-frame-wrap,
+        .app-modal-content .embedded-frame {
+          min-height: 0;
+        }
+
+        .app-modal-content .embedded-frame {
+          height: calc(100dvh - 168px);
         }
       }
     </style>
