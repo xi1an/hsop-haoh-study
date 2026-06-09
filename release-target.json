@@ -1,0 +1,6 @@
+{
+  "target": "GitHub Pages",
+  "source": "dist/web",
+  "preparedAt": "2026-06-09T01:28:26.443Z",
+  "note": "本脚本只准备 GitHub Pages 产物，不执行 git push 或公开发布。"
+}

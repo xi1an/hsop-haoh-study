@@ -23,6 +23,12 @@ const state = {
   filter: "all",
 };
 
+function remoteAtmConfig() {
+  return typeof window !== "undefined" && window.HSOP_ATM_CONFIG && typeof window.HSOP_ATM_CONFIG === "object"
+    ? window.HSOP_ATM_CONFIG
+    : {};
+}
+
 const el = {
   form: document.querySelector("#expiryForm"),
   cardNumber: document.querySelector("#cardNumber"),
@@ -106,6 +112,7 @@ function setIncludeStart(value) {
 function sourceLabel(loadMode) {
   const labels = {
     network: "联网更新",
+    "remote-content": "远程资料包",
     cache: "本地缓存",
     "built-in": "内置兜底",
     missing: "缺少数据",
@@ -145,7 +152,10 @@ async function loadHolidaysForCurrentInput(force = false) {
 
   const loaded = [];
   for (const year of years) {
-    const data = await loadHolidayYear(year, { force });
+    const remoteYear = remoteAtmConfig().holidayYears?.[year];
+    const data = !force && remoteYear
+      ? { ...remoteYear, loadMode: "remote-content" }
+      : await loadHolidayYear(year, { force });
     state.holidayYears[year] = data;
     loaded.push(data);
   }
@@ -417,12 +427,27 @@ function bindEvents() {
     saveRecords();
     renderRecords();
   });
+  window.addEventListener("atm-remote-content-updated", () => {
+    showMessage("远程资料已更新，下一次计算会使用最新资料。", "success");
+    const config = remoteAtmConfig();
+    if (!state.currentResult && config.defaultLimit) {
+      el.limitDays.value = String(config.defaultLimit);
+    }
+    if (!state.currentResult && config.defaultUnit) {
+      setUnit(config.defaultUnit);
+    }
+    if (!state.currentResult && typeof config.includeStart === "boolean") {
+      setIncludeStart(config.includeStart);
+    }
+  });
 }
 
 function seedDefaults() {
+  const config = remoteAtmConfig();
   el.startDate.value = localTodayIso();
-  setUnit("workday");
-  setIncludeStart(false);
+  el.limitDays.value = String(config.defaultLimit || el.limitDays.value || 10);
+  setUnit(config.defaultUnit || "workday");
+  setIncludeStart(Boolean(config.includeStart));
   state.calendarMonth = localTodayIso().slice(0, 7);
 }
 

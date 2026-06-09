@@ -1,4 +1,4 @@
-const aliases = {
+const defaultFieldAliases = {
   payee: ["收款人", "收款户名", "开户名", "开户人", "户名", "户主", "持卡人", "领款人", "代领人", "监护人", "母亲姓名", "父亲姓名", "人员名单"],
   beneficiary: ["补助对象", "受益人", "享受人", "学生姓名", "儿童姓名", "孩子姓名", "人员姓名"],
   name: ["姓名", "名字"],
@@ -8,6 +8,18 @@ const aliases = {
   unit: ["单位", "乡镇", "乡镇街道", "村居", "村", "部门"],
   remark: ["备注", "说明", "发放说明", "关系"],
 };
+
+const payrollConfig =
+  typeof window !== "undefined" && window.PAYROLL_CONFIG && typeof window.PAYROLL_CONFIG === "object"
+    ? window.PAYROLL_CONFIG
+    : {};
+
+const aliases = Object.fromEntries(
+  Object.entries(defaultFieldAliases).map(([field, words]) => [
+    field,
+    [...new Set([...(payrollConfig.fieldAliases?.[field] || []), ...words])],
+  ])
+);
 
 const state = {
   files: [],
@@ -26,6 +38,7 @@ const state = {
 const projectCodes = {
   财补: "AG0025",
   代发工资: "AG0001",
+  ...(payrollConfig.projectCodes || {}),
 };
 
 const baseUnitReferences =
@@ -127,6 +140,19 @@ els.statusFilter.addEventListener("change", () => {
   renderExportPreview();
 });
 els.projectSelect.addEventListener("change", renderExportPreview);
+
+window.addEventListener("payroll-remote-content-updated", () => {
+  if (!state.files.length) {
+    window.location.reload();
+    return;
+  }
+  state.issues.unshift({
+    level: "info",
+    title: "远程资料已更新",
+    message: "当前已有导入文件，本次识别继续使用当前规则；清空并重新打开页面后使用新规则。",
+  });
+  renderIssues();
+});
 
 els.exportPreview.addEventListener("change", (event) => {
   const selectBox = event.target.closest("[data-export-select]");

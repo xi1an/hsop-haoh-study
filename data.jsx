@@ -151,18 +151,18 @@ const hsopPlan = [
   },
 ];
 
-const hsopAppCategories = ["全部", "对公指南", "表格识别", "吞卡提醒", "可拓展"];
+const hsopAppCategories =
+  window.hsopAppCategories || ["全部", "对公指南", "表格识别", "吞卡提醒", "可拓展"];
 
-const hsopApps = [
+const hsopApps = window.hsopApps || [
   {
     id: "corporate-guide",
     title: "对公指南",
     shortTitle: "对公指南",
     category: "对公指南",
     icon: "briefcase",
-    launchType: "embedded",
-    path: "apps/corporate-guide/index.html",
-    status: "独立工具",
+    launchType: "native",
+    status: "已接入",
     summary: "按客户类型和办理业务生成资料清单。",
     detail: "保留企业/单位客户，开户、变更、销户、网银等办理分支。",
     privacy: "私用版本，不展示个人联系方式；具体资料以柜面审核为准。",
