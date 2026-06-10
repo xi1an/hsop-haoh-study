@@ -1264,10 +1264,15 @@ function buildExportPlan(records = getFilteredRecords()) {
       retryMarker,
       ignoredRows: sheetResult?.ignoredRows || 0,
       extractionMode: sheetResult?.extractionMode || "",
-      detailFileName: createUniqueFileName(`${unit.name}${group.records.length}笔${formatFileAmount(amount)}元.xlsx`, usedFileNames),
+      detailFileName: createUniqueFileName(buildDetailFileName(unit.name, group.records.length, amount, retryMarker), usedFileNames),
     };
   });
   return { groups };
+}
+
+function buildDetailFileName(unitName, count, amount, retryMarker) {
+  const retryText = retryMarker ? "失败续发" : "";
+  return `${unitName}${retryText}${count}笔${formatFileAmount(amount)}元.xlsx`;
 }
 
 function getExportGroupIssues(group) {
