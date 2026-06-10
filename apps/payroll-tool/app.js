@@ -49,6 +49,11 @@ const unitAliases =
     ? window.PAYROLL_UNIT_ALIASES
     : {};
 
+const unitFuzzyAliases =
+  typeof window !== "undefined" && window.PAYROLL_UNIT_FUZZY_ALIASES && typeof window.PAYROLL_UNIT_FUZZY_ALIASES === "object"
+    ? window.PAYROLL_UNIT_FUZZY_ALIASES
+    : {};
+
 const unitFolders =
   typeof window !== "undefined" && window.PAYROLL_UNIT_FOLDERS && typeof window.PAYROLL_UNIT_FOLDERS === "object"
     ? window.PAYROLL_UNIT_FOLDERS
@@ -63,18 +68,12 @@ const villageFolders =
   typeof window !== "undefined" && Array.isArray(window.PAYROLL_VILLAGE_FOLDERS) ? window.PAYROLL_VILLAGE_FOLDERS : [];
 
 const unitReferences = [...new Set([...baseUnitReferences, ...Object.keys(unitFolders)].filter(Boolean))];
+const unitAliasIndex = buildUnitAliasIndex(unitReferences, unitAliases, unitFuzzyAliases);
 
 const unitReferenceIndex = unitReferences.map((name) => ({
   name,
   full: normalizeUnitForMatch(name),
   core: normalizeUnitCore(name),
-}));
-
-const unitAliasIndex = Object.entries(unitAliases).map(([alias, name]) => ({
-  alias,
-  name,
-  full: normalizeUnitForMatch(alias),
-  core: normalizeUnitCore(alias),
 }));
 
 const unitFolderIndex = Object.entries(unitFolders).map(([unit, folder]) => ({
@@ -742,6 +741,7 @@ function normalizeYellowRecord(cells, source) {
     idNo: "",
     unit: source.sourceUnit || inferUnit(source.fileName, source.sheetName),
     sourceUnit: source.sourceUnit || "",
+    retryHint: cells.some((cell) => hasRetryText(cell.value || cell.header)),
     fileName: source.fileName,
     sheetName: source.sheetName,
     rowNumber: source.rowNumber,
@@ -875,6 +875,7 @@ function normalizeRecord(row, columns, source) {
     idNo,
     unit: unit || source.sourceUnit || inferUnit(source.fileName, source.sheetName),
     sourceUnit: source.sourceUnit || "",
+    retryHint: row.some(hasRetryText),
     fileName: source.fileName,
     sheetName: source.sheetName,
     rowNumber: source.rowNumber,
@@ -1257,6 +1258,104 @@ function saveManualUnit(groupId, value, shouldRender = false) {
   if (shouldRender) renderExportPreview();
 }
 
+function buildUnitAliasIndex(references, configuredAliases, configuredFuzzyAliases) {
+  const entries = new Map();
+  const autoAliases = buildAutoUnitAliases(references);
+  addUnitAliases(entries, autoAliases, "自动简称", 0.04);
+  addUnitAliases(entries, configuredAliases, "简称", 0.12);
+  addUnitAliases(entries, configuredFuzzyAliases, "模糊词", 0.2);
+  return [...entries.values()];
+}
+
+function addUnitAliases(entries, aliasesToAdd, source, boost) {
+  Object.entries(aliasesToAdd || {}).forEach(([alias, name]) => {
+    const text = clean(alias);
+    const unitName = clean(name);
+    if (!text || !unitName) return;
+    const key = `${normalizeUnitForMatch(text)}\u0000${unitName}`;
+    const existing = entries.get(key);
+    if (existing && existing.boost >= boost) return;
+    entries.set(key, {
+      alias: text,
+      name: unitName,
+      full: normalizeUnitForMatch(text),
+      core: normalizeUnitCore(text),
+      source,
+      boost,
+    });
+  });
+}
+
+function buildAutoUnitAliases(references) {
+  const candidates = new Map();
+  references.forEach((name) => {
+    getAutoUnitAliasCandidates(name).forEach((alias) => {
+      if (!candidates.has(alias)) candidates.set(alias, new Set());
+      candidates.get(alias).add(name);
+    });
+  });
+
+  const aliases = {};
+  candidates.forEach((names, alias) => {
+    if (names.size === 1) aliases[alias] = [...names][0];
+  });
+  return aliases;
+}
+
+function getAutoUnitAliasCandidates(name) {
+  const full = normalizeUnitForMatch(name);
+  const core = normalizeUnitCore(name);
+  const aliases = new Set([full, core].filter(Boolean));
+
+  addSchoolAliasCandidates(aliases, core);
+  addKindergartenAliasCandidates(aliases, core);
+  addInstitutionAliasCandidates(aliases, core);
+
+  return [...aliases].filter((alias) => isUsefulAutoAlias(alias, core));
+}
+
+function addSchoolAliasCandidates(aliases, core) {
+  if (!core) return;
+  if (core.includes("中心学校")) aliases.add(core.replace(/中心学校/g, "中心校"));
+
+  const townCenterMatch = core.match(/^(.+?)(镇|乡)中心学校$/);
+  if (townCenterMatch) {
+    const townName = townCenterMatch[1];
+    aliases.add(`${townName}${townCenterMatch[2]}中心校`);
+    aliases.add(`${townName}中心学校`);
+    aliases.add(`${townName}中心校`);
+  }
+
+  const streetCenterMatch = core.match(/^(.+?街道)(?:办事处)?中心学校$/);
+  if (streetCenterMatch) {
+    aliases.add(`${streetCenterMatch[1]}中心校`);
+    aliases.add(`${streetCenterMatch[1]}中心学校`);
+  }
+}
+
+function addKindergartenAliasCandidates(aliases, core) {
+  const match = core.match(/^(.+?)幼儿园$/);
+  if (!match) return;
+  aliases.add(`${match[1]}幼儿园`);
+  aliases.add(match[1]);
+}
+
+function addInstitutionAliasCandidates(aliases, core) {
+  const match = core.match(/^(.+?)(局|委员会|办公室|中心|学校|小学|中学|幼儿园|联合会|事务局|管理局|办事处|人民政府)$/);
+  if (!match) return;
+  aliases.add(match[0]);
+  if (match[1].length >= 2 && !/^(河东|向阳|新华|老庙|插花|正午|枣庄|冉庙|口孜|袁寨|新乌江|杨楼孜)$/.test(match[1])) {
+    aliases.add(match[1]);
+  }
+}
+
+function isUsefulAutoAlias(alias, core) {
+  if (!alias || alias.length < 2) return false;
+  if (/^(安徽省|阜阳市|颍东区|人民政府|中心学校|中心校|小学|中学|幼儿园|办公室|委员会|管理局|事务局)$/.test(alias)) return false;
+  if (/^(河东|向阳|新华|老庙|插花|正午|枣庄|冉庙|口孜|袁寨|新乌江|杨楼孜)$/.test(alias)) return false;
+  return alias === core || alias.length >= 3;
+}
+
 function updateUnitSuggestionPanel(input) {
   const panel = input.closest(".unit-input-wrap")?.querySelector("[data-unit-suggestions]");
   if (!panel) return;
@@ -1290,7 +1389,7 @@ function getUnitSuggestions(value, limit = 8) {
   const scored = new Map();
   unitAliasIndex.forEach((alias) => {
     const score = scoreUnitSuggestion(queryFull, queryCore, alias.full, alias.core);
-    if (score > 0) addUnitSuggestionScore(scored, alias.name, score + 12, `简称：${alias.alias}`);
+    if (score > 0) addUnitSuggestionScore(scored, alias.name, score + 12 + alias.boost * 100, `${alias.source}：${alias.alias}`);
   });
   unitReferenceIndex.forEach((reference) => {
     addUnitSuggestionScore(scored, reference.name, scoreUnitSuggestion(queryFull, queryCore, reference.full, reference.core), "");
@@ -1458,7 +1557,12 @@ function findSheetResult(fileName, sheetName) {
 }
 
 function hasRetryMarker(group) {
-  return /(失败|续发|重发|补发|补打卡|打卡失败)/.test(`${group.fileName} ${group.sheetName}`);
+  if (hasRetryText(`${group.fileName} ${group.sheetName}`)) return true;
+  return group.records.some((record) => record.retryHint);
+}
+
+function hasRetryText(value) {
+  return /(失败|续发|重发|补发|补打卡|打卡失败|发放失败|失败人员|回盘|更改账号|更正|已更正|退汇|账号错误|账户错误|卡号错误)/.test(clean(value));
 }
 
 function resolveRetryMarker(group, groupId) {
@@ -1722,14 +1826,14 @@ function scoreAliasMatch(candidate, alias) {
     aliasTexts.forEach((aliasText) => {
       if (!candidateText || !aliasText) return;
       if (candidateText === aliasText) {
-        score = Math.max(score, 1.12);
+        score = Math.max(score, 1.12 + alias.boost);
         return;
       }
       if (aliasText.length >= 2 && candidateText.includes(aliasText)) {
-        score = Math.max(score, 1.04);
+        score = Math.max(score, 1.04 + alias.boost);
       }
       if (candidateText.length >= 3 && aliasText.includes(candidateText)) {
-        score = Math.max(score, 0.98);
+        score = Math.max(score, 0.98 + alias.boost);
       }
     });
   });

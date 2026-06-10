@@ -19,13 +19,15 @@ export function escapeIcs(text) {
 }
 
 export function buildCalendarText(record) {
-  const title = `吞卡作废提醒 ${record.cardNumber}`;
+  const cardLabel = record.cardNumberMasked || "未保存卡号";
+  const title = `吞卡作废提醒 ${cardLabel}`;
   const description = [
-    `银行卡号：${record.cardNumber}`,
+    `卡号标识：${cardLabel}`,
     `吞卡领取日期：${formatDateWithWeek(record.startDate)}`,
     `最后可处理日：${formatDateWithWeek(record.deadline)}`,
     `作废日：${formatDateWithWeek(record.voidDate)}`,
     `规则：超过 ${record.limit} 个${record.unit === "workday" ? "工作日" : "自然日"}，${record.includeStart ? "包含" : "不包含"}起算当天`,
+    "本工具不保存完整银行卡号或历史记录。",
     `节假日数据：${record.sourceSummary || "自然日无需节假日数据"}`,
   ].join("\n");
   const stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
@@ -51,4 +53,3 @@ export function buildCalendarText(record) {
     "END:VCALENDAR",
   ].join("\r\n");
 }
-

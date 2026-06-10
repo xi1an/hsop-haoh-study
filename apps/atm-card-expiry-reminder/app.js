@@ -5,22 +5,17 @@ import {
   getYear,
   loadHolidayYear,
   parseIsoDate,
-  recordState,
   yearsNeededForEstimate,
 } from "./date-engine.js";
 import { buildCalendarText, formatDateWithWeek } from "./calendar-export.js";
 import { HOLIDAY_API, HOLIDAY_APIS, STATE_COUNCIL_2026_SOURCE } from "./holiday-data.js";
 
-const RECORD_KEY = "atm-card-expiry:records";
-
 const state = {
   unit: "workday",
   includeStart: false,
-  records: [],
   holidayYears: {},
   currentResult: null,
   calendarMonth: null,
-  filter: "all",
 };
 
 function remoteAtmConfig() {
@@ -51,9 +46,7 @@ const el = {
   prevMonth: document.querySelector("#prevMonth"),
   nextMonth: document.querySelector("#nextMonth"),
   calendarToday: document.querySelector("#calendarToday"),
-  tabs: document.querySelectorAll("[data-filter]"),
-  recordsList: document.querySelector("#recordsList"),
-  clearDone: document.querySelector("#clearDone"),
+  downloadCurrentCalendar: document.querySelector("#downloadCurrentCalendar"),
 };
 
 function localTodayIso() {
@@ -74,27 +67,14 @@ function hideMessage() {
   el.message.className = "message";
 }
 
-function readRecords() {
-  try {
-    const raw = localStorage.getItem(RECORD_KEY);
-    state.records = raw ? JSON.parse(raw) : [];
-  } catch {
-    state.records = [];
-  }
-}
-
-function saveRecords() {
-  localStorage.setItem(RECORD_KEY, JSON.stringify(state.records));
-}
-
-function formatShortDate(iso) {
-  const date = parseIsoDate(iso);
-  if (!date) return "-";
-  return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日`;
-}
-
 function cleanCardNumber(value) {
   return (value || "").replace(/\s+/g, "");
+}
+
+function maskCardNumber(value) {
+  const clean = cleanCardNumber(value);
+  if (clean.length <= 8) return clean;
+  return `${clean.slice(0, 4)} **** **** ${clean.slice(-4)}`;
 }
 
 function setUnit(unit) {
@@ -194,6 +174,7 @@ async function calculateCurrent(forceRefresh = false) {
     ...result,
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     cardNumber,
+    cardNumberMasked: maskCardNumber(cardNumber),
     createdAt: new Date().toISOString(),
     sourceSummary: Object.values(state.holidayYears)
       .map((item) => `${item.year}:${sourceLabel(item.loadMode)}:${item.source}`)
@@ -286,94 +267,35 @@ function shiftCalendarMonth(delta) {
   renderCalendar();
 }
 
-function statusCopy(status) {
-  return {
-    soon: "临期",
-    today: "今日作废",
-    expired: "已作废",
-    active: "未到期",
-  }[status] || "未到期";
-}
-
-function filteredRecords() {
-  const today = localTodayIso();
-  return state.records.filter((record) => {
-    const status = recordState(record, today);
-    if (state.filter === "all") return true;
-    if (state.filter === "soon") return status === "soon";
-    return status === state.filter;
-  });
-}
-
-function renderRecords() {
-  const records = filteredRecords().sort((a, b) => a.voidDate.localeCompare(b.voidDate));
-  if (!records.length) {
-    el.recordsList.innerHTML = `<div class="empty-state">还没有符合当前筛选的记录。</div>`;
-    return;
-  }
-
-  const today = localTodayIso();
-  el.recordsList.innerHTML = records
-    .map((record) => {
-      const status = recordState(record, today);
-      return `
-        <article class="record-card">
-          <div class="record-head">
-            <div class="record-title">
-              <div class="record-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"></path>
-                  <path d="M4 10h16"></path>
-                </svg>
-              </div>
-              <div>
-                <strong>${record.cardNumber}</strong>
-                <span>${record.limit} 个${record.unit === "workday" ? "工作日" : "自然日"}，${record.includeStart ? "含当天" : "不含当天"}</span>
-              </div>
-            </div>
-            <span class="tag ${status}">${statusCopy(status)}</span>
-          </div>
-          <div class="record-meta">领取：${formatShortDate(record.startDate)}　截止：${formatShortDate(record.deadline)}　作废：${formatShortDate(record.voidDate)}</div>
-          <div class="record-actions">
-            <button class="secondary-button" type="button" data-action="calendar" data-id="${record.id}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M8 2v4"></path><path d="M16 2v4"></path><path d="M3 10h18"></path><path d="M5 4h14a2 2 0 0 1 2 2v15H3V6a2 2 0 0 1 2-2Z"></path>
-              </svg>
-              加入日历
-            </button>
-            <button class="secondary-button" type="button" data-action="view" data-id="${record.id}">查看依据</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
 function downloadCalendar(record) {
   const ics = buildCalendarText(record);
 
   const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `吞卡作废提醒-${record.cardNumber}-${record.voidDate}.ics`;
+  link.download = `吞卡作废提醒-${record.voidDate}.ics`;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(link.href);
 }
 
+function downloadCurrentCalendar() {
+  if (!state.currentResult) {
+    showMessage("请先计算日期", "error");
+    return;
+  }
+  downloadCalendar(state.currentResult);
+}
+
 async function handleSubmit(event) {
   event.preventDefault();
   hideMessage();
   try {
-    const record = await calculateCurrent(false);
-    const existingIndex = state.records.findIndex((item) => item.cardNumber === record.cardNumber && item.startDate === record.startDate);
-    if (existingIndex >= 0) state.records[existingIndex] = record;
-    else state.records.unshift(record);
-    saveRecords();
-    renderResult(record);
-    renderRecords();
-    showMessage("已计算并保存，可在记录里添加到手机日历。", "info");
+    const result = await calculateCurrent(false);
+    renderResult(result);
+    el.cardNumber.value = "";
+    showMessage("已计算，本页面不会保存银行卡号或历史记录。", "info");
   } catch (error) {
     showMessage(error.message, "error");
   }
@@ -397,35 +319,12 @@ function bindEvents() {
   el.form.addEventListener("submit", handleSubmit);
   el.refreshHolidays.addEventListener("click", refreshAndRecalculate);
   el.manualRefresh.addEventListener("click", refreshAndRecalculate);
+  el.downloadCurrentCalendar.addEventListener("click", downloadCurrentCalendar);
   el.prevMonth.addEventListener("click", () => shiftCalendarMonth(-1));
   el.nextMonth.addEventListener("click", () => shiftCalendarMonth(1));
   el.calendarToday.addEventListener("click", () => {
     state.calendarMonth = state.currentResult?.deadline.slice(0, 7) || localTodayIso().slice(0, 7);
     renderCalendar();
-  });
-  el.tabs.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.filter = button.dataset.filter;
-      el.tabs.forEach((tab) => tab.classList.toggle("active", tab === button));
-      renderRecords();
-    });
-  });
-  el.recordsList.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-action]");
-    if (!button) return;
-    const record = state.records.find((item) => item.id === button.dataset.id);
-    if (!record) return;
-    if (button.dataset.action === "calendar") downloadCalendar(record);
-    if (button.dataset.action === "view") {
-      renderResult(record);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  });
-  el.clearDone.addEventListener("click", () => {
-    const today = localTodayIso();
-    state.records = state.records.filter((record) => recordState(record, today) !== "expired");
-    saveRecords();
-    renderRecords();
   });
   window.addEventListener("atm-remote-content-updated", () => {
     showMessage("远程资料已更新，下一次计算会使用最新资料。", "success");
@@ -453,9 +352,7 @@ function seedDefaults() {
 
 async function init() {
   seedDefaults();
-  readRecords();
   bindEvents();
-  renderRecords();
   renderCalendar();
   renderSourceStatus();
   try {

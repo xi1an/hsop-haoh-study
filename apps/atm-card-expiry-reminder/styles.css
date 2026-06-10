@@ -349,6 +349,10 @@ input:focus {
   line-height: 1.55;
 }
 
+.result-actions {
+  margin-top: 12px;
+}
+
 .source-line {
   display: flex;
   align-items: center;
@@ -532,6 +536,27 @@ input:focus {
   color: #343941;
   font-size: 12px;
   line-height: 1.55;
+}
+
+.privacy-panel {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.privacy-panel strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.privacy-panel span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .records {

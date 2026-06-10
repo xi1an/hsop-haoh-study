@@ -192,8 +192,8 @@ const hsopApps = window.hsopApps || [
     path: "apps/atm-card-expiry-reminder/index.html",
     status: "独立工具",
     summary: "录入吞卡领取日期，计算最后可处理日和作废日。",
-    detail: "支持工作日/自然日、包含当天切换、本机记录筛选和手机日历提醒导出。",
-    privacy: "银行卡号只保存在当前浏览器本机；生成日历文件前请确认内容适合导入。",
+    detail: "支持工作日/自然日、包含当天切换、作废日计算和本次日历提醒导出。",
+    privacy: "银行卡号仅用于本次计算；网页和小程序都不保存历史记录。",
     accent: "red",
   },
   {

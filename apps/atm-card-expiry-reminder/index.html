@@ -37,7 +37,7 @@
         <section class="panel" aria-label="录入表单">
           <form id="expiryForm" class="form-grid">
             <div class="field">
-              <label for="cardNumber">银行卡号</label>
+              <label for="cardNumber">银行卡号（仅本次计算）</label>
               <input id="cardNumber" name="cardNumber" inputmode="numeric" autocomplete="off" placeholder="请输入完整银行卡号" required />
             </div>
 
@@ -73,7 +73,7 @@
                 <path d="M5 12h14"></path>
                 <path d="M12 5v14"></path>
               </svg>
-              计算并保存
+              仅计算本次
             </button>
           </form>
 
@@ -96,6 +96,9 @@
                 <button id="manualRefresh" class="text-button" type="button">刷新</button>
               </div>
               <div id="sourceDetail">节假日数据用于判断工作日、节假日和调休上班日。</div>
+            </div>
+            <div class="result-actions">
+              <button id="downloadCurrentCalendar" class="secondary-button" type="button">下载本次日历提醒</button>
             </div>
           </div>
         </section>
@@ -132,23 +135,15 @@
             </ul>
           </div>
 
-          <div class="tabs" role="tablist" aria-label="记录筛选">
-            <button type="button" data-filter="all" class="active">全部</button>
-            <button type="button" data-filter="soon">临期</button>
-            <button type="button" data-filter="today">今日</button>
-            <button type="button" data-filter="expired">已作废</button>
+          <div class="privacy-panel">
+            <strong>不保存历史记录</strong>
+            <span>多人共用时，系统只显示本次计算结果，不保存每次登记的卡号和记录列表。</span>
           </div>
-
-          <div class="section-title">
-            <h2>已保存记录</h2>
-            <button id="clearDone" class="text-button" type="button">清理已作废</button>
-          </div>
-          <div id="recordsList" class="records"></div>
         </section>
       </div>
 
       <p class="footnote">
-        工具只把记录保存在当前浏览器本机；节假日联网数据来自第三方接口，页面会显示数据状态，国务院未公布的未来调休不做预测。
+        工具不保存银行卡号或历史记录；节假日联网数据来自第三方接口，页面会显示数据状态，国务院未公布的未来调休不做预测。
       </p>
     </main>
 

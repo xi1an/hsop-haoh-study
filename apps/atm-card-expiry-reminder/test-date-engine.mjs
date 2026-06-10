@@ -56,6 +56,7 @@ assert.throws(
 const ics = buildCalendarText({
   id: "test-record",
   cardNumber: "6222000000001234567",
+  cardNumberMasked: "6222 **** **** 4567",
   startDate: "2026-02-13",
   deadline: "2026-02-28",
   voidDate: "2026-03-01",
@@ -66,7 +67,8 @@ const ics = buildCalendarText({
 });
 assert.match(ics, /BEGIN:VCALENDAR/);
 assert.match(ics, /DTSTART;TZID=Asia\/Shanghai:20260301T090000/);
-assert.match(ics, /SUMMARY:吞卡作废提醒 6222000000001234567/);
+assert.match(ics, /SUMMARY:吞卡作废提醒 6222 \*\*\*\* \*\*\*\* 4567/);
+assert.doesNotMatch(ics, /6222000000001234567/);
 assert.match(ics, /TRIGGER:-PT0M/);
 
 console.log("date-engine tests passed");
