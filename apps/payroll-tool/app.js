@@ -117,6 +117,39 @@ const els = {
   issueCount: document.querySelector("#issueCount"),
 };
 
+function reportWorkState(reason = "") {
+  if (window.parent === window) return;
+  const dirty = hasPayrollWorkInProgress();
+  window.parent.postMessage(
+    {
+      type: "hsop-app-work-state",
+      appId: "payroll-tool",
+      dirty,
+      reason: dirty ? reason || getPayrollWorkStateReason() : "",
+    },
+    "*",
+  );
+}
+
+function hasPayrollWorkInProgress() {
+  return (
+    state.files.length > 0 ||
+    state.records.length > 0 ||
+    state.sheetResults.length > 0 ||
+    Object.values(state.manualUnits).some((value) => clean(value)) ||
+    Object.keys(state.exportSelectionTouched).length > 0 ||
+    Object.keys(state.retryOverrideTouched).length > 0
+  );
+}
+
+function getPayrollWorkStateReason() {
+  if (Object.values(state.manualUnits).some((value) => clean(value))) return "已有手工修正";
+  if (Object.keys(state.retryOverrideTouched).length || Object.keys(state.exportSelectionTouched).length) return "已有导出设置";
+  if (state.records.length || state.sheetResults.length) return "已有识别结果";
+  if (state.files.length) return "已导入文件";
+  return "";
+}
+
 els.pickButton.addEventListener("click", () => els.fileInput.click());
 els.fileInput.addEventListener("change", (event) => parseFiles([...event.target.files]));
 els.clearButton.addEventListener("click", resetState);
@@ -180,6 +213,7 @@ els.exportPreview.addEventListener("input", (event) => {
   const unitInput = event.target.closest("[data-unit-input]");
   if (!unitInput) return;
   state.manualUnits[unitInput.dataset.groupId] = unitInput.value;
+  reportWorkState("已有手工修正");
   updateUnitSuggestionPanel(unitInput);
 });
 
@@ -982,6 +1016,7 @@ function renderAll() {
   renderRecords();
   renderExportPreview();
   renderIssues();
+  reportWorkState();
 }
 
 function renderMetrics() {

@@ -34,6 +34,7 @@ function statusFromProgress(progress) {
 function App() {
   const [apps, setApps] = useState(() => window.hsopApps || []);
   const [modalAppId, setModalAppId] = useState("");
+  const [modalWorkStates, setModalWorkStates] = useState({});
   const [category, setCategory] = useState("全部");
   const [appQuery, setAppQuery] = useState("");
   const [resourceQuery, setResourceQuery] = useState("");
@@ -53,6 +54,7 @@ function App() {
   const taskDialogRef = useRef(null);
 
   const modalApp = apps.find((app) => app.id === modalAppId);
+  const modalWorkState = modalAppId ? modalWorkStates[modalAppId] : null;
 
   useEffect(() => {
     localStorage.setItem(taskStorageKey, JSON.stringify(tasks));
@@ -85,6 +87,23 @@ function App() {
   }, []);
 
   useEffect(() => {
+    function handleAppWorkState(event) {
+      const payload = event.data;
+      if (!payload || payload.type !== "hsop-app-work-state" || !payload.appId) return;
+      setModalWorkStates((current) => ({
+        ...current,
+        [payload.appId]: {
+          dirty: Boolean(payload.dirty),
+          reason: payload.reason || "",
+        },
+      }));
+    }
+
+    window.addEventListener("message", handleAppWorkState);
+    return () => window.removeEventListener("message", handleAppWorkState);
+  }, []);
+
+  useEffect(() => {
     if (!modalAppId) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -92,6 +111,11 @@ function App() {
 
     function handleKeyDown(event) {
       if (event.key === "Escape") {
+        const currentApp = apps.find((app) => app.id === modalAppId);
+        if (isGuardedApp(currentApp)) {
+          setToast("请使用右上角关闭按钮退出表格识别");
+          return;
+        }
         setModalAppId("");
       }
     }
@@ -102,7 +126,7 @@ function App() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [modalAppId]);
+  }, [apps, modalAppId]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -142,8 +166,29 @@ function App() {
     const app = apps.find((item) => item.id === appId);
     if (!app) return;
 
+    setModalWorkStates((current) => ({
+      ...current,
+      [appId]: { dirty: false, reason: "" },
+    }));
     setModalAppId(appId);
     setRecentAppIds((current) => [appId, ...current.filter((id) => id !== appId)].slice(0, 6));
+  }
+
+  function closeModal() {
+    if (!modalAppId) return;
+    setModalAppId("");
+    setModalWorkStates((current) => ({
+      ...current,
+      [modalAppId]: { dirty: false, reason: "" },
+    }));
+  }
+
+  function requestModalClose() {
+    if (isGuardedApp(modalApp) && modalWorkState?.dirty) {
+      const confirmed = window.confirm("表格识别已有导入或修正内容，关闭后需要重新导入。确定关闭吗？");
+      if (!confirmed) return;
+    }
+    closeModal();
   }
 
   function updateTaskProgress(taskId, progress) {
@@ -260,7 +305,7 @@ function App() {
       {modalApp && (
         <AppModalHost
           app={modalApp}
-          onClose={() => setModalAppId("")}
+          onClose={requestModalClose}
           onToast={setToast}
         />
       )}
@@ -272,8 +317,13 @@ function App() {
   );
 }
 
+function isGuardedApp(app) {
+  return app?.id === "payroll-tool";
+}
+
 function AppModalHost({ app, onClose, onToast }) {
   function handleBackdropMouseDown(event) {
+    if (isGuardedApp(app)) return;
     if (event.target === event.currentTarget) {
       onClose();
     }
