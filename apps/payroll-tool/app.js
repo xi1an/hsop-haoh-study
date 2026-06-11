@@ -280,6 +280,7 @@ async function parseFiles(files) {
   state.files = inputFiles.map((file) => ({
     name: file.name,
     status: "识别中",
+    currentEntry: "",
     entries: 0,
     sheets: 0,
     records: 0,
@@ -298,7 +299,11 @@ async function parseFiles(files) {
       }
 
       const results = { records: [], issues: [], sheetResults: [] };
-      for (const entry of spreadsheetEntries) {
+      state.files[fileIndex].entries = spreadsheetEntries.length;
+      for (const [entryIndex, entry] of spreadsheetEntries.entries()) {
+        state.files[fileIndex].currentEntry = `正在识别 ${entryIndex + 1}/${spreadsheetEntries.length}：${lastPathPart(entry.name)}`;
+        renderAll();
+        await waitForBrowserPaint();
         const entryResults = parseSpreadsheetEntry(entry);
         results.records.push(...entryResults.records);
         results.issues.push(...entryResults.issues);
@@ -309,13 +314,14 @@ async function parseFiles(files) {
       state.records.push(...results.records);
       state.issues.push(...results.issues);
       state.files[fileIndex].status = results.records.length ? "已识别" : results.issues.length ? "需处理" : "未找到明细";
-      state.files[fileIndex].entries = spreadsheetEntries.length;
+      state.files[fileIndex].currentEntry = "";
       state.files[fileIndex].sheets = results.sheetResults.filter((sheet) => sheet.status === "已识别").length;
       state.files[fileIndex].records = results.records.length;
       state.files[fileIndex].issues = results.issues.length;
       state.files[fileIndex].sheetResults = results.sheetResults;
     } catch (error) {
       state.files[fileIndex].status = "读取失败";
+      state.files[fileIndex].currentEntry = "";
       state.files[fileIndex].issues = 1;
       state.issues.push({
         level: "error",
@@ -325,6 +331,12 @@ async function parseFiles(files) {
     }
     renderAll();
   }
+}
+
+function waitForBrowserPaint() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+  });
 }
 
 async function expandInputFile(file, originalData) {
@@ -364,14 +376,17 @@ function parseWorkbook(workbook, fileName) {
 
   workbook.SheetNames.forEach((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
+    const contentBounds = collectSheetContentBounds(sheet);
+    const readRange = getSheetReadRange(sheet, contentBounds);
     const rows = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
       defval: "",
       blankrows: false,
       raw: false,
+      ...(readRange ? { range: readRange } : {}),
     });
     const sourceUnit = inferSourceUnit(rows, fileName, sheetName);
-    const yellowResult = parseYellowMarkedSheet(sheet, rows, fileName, sheetName, sourceUnit);
+    const yellowResult = parseYellowMarkedSheet(sheet, rows, fileName, sheetName, sourceUnit, contentBounds);
     if (yellowResult.markedRows > 0 && yellowResult.records.length > 0) {
       records.push(...yellowResult.records);
       issues.push(...yellowResult.issues);
@@ -713,25 +728,31 @@ function amountsEqual(left, right) {
   return Math.abs(Number(left) - Number(right)) < 0.005;
 }
 
-function parseYellowMarkedSheet(sheet, rows, fileName, sheetName, sourceUnit) {
+function parseYellowMarkedSheet(sheet, rows, fileName, sheetName, sourceUnit, contentBounds = collectSheetContentBounds(sheet)) {
   const records = [];
   const issues = [];
   const range = sheet["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : null;
-  if (!range) return { records, issues, markedRows: 0, incompleteRows: 0 };
+  if (!range || !contentBounds.cells.length) return { records, issues, markedRows: 0, incompleteRows: 0 };
+  const ignoredLargeBlankRange = isInflatedSheetRange(range, contentBounds.cells.length);
+  if (ignoredLargeBlankRange) {
+    issues.push({
+      level: "warn",
+      title: "已忽略大范围空白黄底样式",
+      message: `${fileName} / ${sheetName}：工作表样式范围过大（${formatSheetRangeSize(range)}），已只识别有内容的黄底单元格`,
+    });
+  }
 
   const yellowRows = new Map();
-  for (let rowIndex = range.s.r; rowIndex <= range.e.r; rowIndex += 1) {
-    for (let colIndex = range.s.c; colIndex <= range.e.c; colIndex += 1) {
-      const address = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
-      const cell = sheet[address];
-      if (!cell || !isYellowCell(cell)) continue;
-      if (!yellowRows.has(rowIndex)) yellowRows.set(rowIndex, []);
-      yellowRows.get(rowIndex).push({
-        colIndex,
-        value: clean(cell.w ?? cell.v),
-        header: findNearestHeader(rows, rowIndex, colIndex),
-      });
-    }
+  for (const { cell, rowIndex, colIndex, value } of contentBounds.cells) {
+    if (rowIndex > contentBounds.maxRow || colIndex > contentBounds.maxCol) continue;
+    const lastContentCol = contentBounds.rowLastContentCol.get(rowIndex) ?? -1;
+    if (colIndex > lastContentCol || !isYellowCell(cell)) continue;
+    if (!yellowRows.has(rowIndex)) yellowRows.set(rowIndex, []);
+    yellowRows.get(rowIndex).push({
+      colIndex,
+      value,
+      header: findNearestHeader(rows, rowIndex, colIndex),
+    });
   }
 
   let incompleteRows = 0;
@@ -758,6 +779,60 @@ function parseYellowMarkedSheet(sheet, rows, fileName, sheetName, sourceUnit) {
   removeTrailingAmountTotalRecord(records);
   collectRecordIssues(records, issues);
   return { records, issues, markedRows: yellowRows.size, incompleteRows };
+}
+
+function collectSheetContentBounds(sheet) {
+  const cells = [];
+  const rowLastContentCol = new Map();
+  let maxRow = -1;
+  let maxCol = -1;
+
+  Object.keys(sheet).forEach((address) => {
+    if (!/^[A-Z]+[0-9]+$/i.test(address)) return;
+    const cell = sheet[address];
+    const value = clean(cell?.w ?? cell?.v);
+    if (!value) return;
+    const position = XLSX.utils.decode_cell(address);
+    maxRow = Math.max(maxRow, position.r);
+    maxCol = Math.max(maxCol, position.c);
+    rowLastContentCol.set(position.r, Math.max(rowLastContentCol.get(position.r) ?? -1, position.c));
+    cells.push({
+      cell,
+      rowIndex: position.r,
+      colIndex: position.c,
+      value,
+    });
+  });
+
+  return { cells, rowLastContentCol, maxRow, maxCol };
+}
+
+function getSheetReadRange(sheet, contentBounds) {
+  if (!sheet["!ref"] || !contentBounds.cells.length) return "";
+  const declaredRange = XLSX.utils.decode_range(sheet["!ref"]);
+  return XLSX.utils.encode_range({
+    s: {
+      r: Math.max(0, declaredRange.s.r),
+      c: Math.max(0, declaredRange.s.c),
+    },
+    e: {
+      r: Math.max(declaredRange.s.r, contentBounds.maxRow),
+      c: Math.max(declaredRange.s.c, contentBounds.maxCol),
+    },
+  });
+}
+
+function isInflatedSheetRange(range, contentCellCount) {
+  const rangeCells = getRangeCellCount(range);
+  return rangeCells > 100000 && rangeCells > Math.max(contentCellCount * 50, 1000);
+}
+
+function getRangeCellCount(range) {
+  return (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
+}
+
+function formatSheetRangeSize(range) {
+  return `${range.e.r - range.s.r + 1} 行 × ${range.e.c - range.s.c + 1} 列`;
 }
 
 function normalizeYellowRecord(cells, source) {
@@ -1050,6 +1125,7 @@ function renderQueue() {
           <div>
             <p class="queue-title">${escapeHtml(file.name)}</p>
             <p class="queue-meta">${file.entries ? `${file.entries} 个电子表 · ` : ""}${file.sheets} 个明细 sheet · ${file.records} 条记录 · ${file.issues} 个问题</p>
+            ${file.currentEntry ? `<p class="queue-current">${escapeHtml(file.currentEntry)}</p>` : ""}
           </div>
           <span class="chip ${statusClass}">${file.status}</span>
           ${sheetRows ? `<div class="sheet-list">${sheetRows}</div>` : ""}
@@ -1280,12 +1356,13 @@ function getExportGroupIssues(group) {
   if (group.unitNeedsReview) issues.push("代发单位未匹配到本地全称，请手动输入简称或全称后点击匹配单位");
   if (group.folderNeedsReview) issues.push("导出文件夹未匹配到单位管理表，请检查代发单位或原始文件名");
   if (group.ignoredRows) issues.push(`已忽略 ${group.ignoredRows} 行只有金额或缺少姓名/账户的非明细行`);
-  group.records.forEach((record) => {
+  for (const record of group.records) {
+    if (issues.length >= 8) break;
     record.issues.forEach((issue) => {
-      issues.push(`${record.rowNumber} 行：${issue.title}，${issue.message}`);
+      if (issues.length < 8) issues.push(`${record.rowNumber} 行：${issue.title}，${issue.message}`);
     });
-  });
-  return issues.slice(0, 8);
+  }
+  return issues;
 }
 
 function saveManualUnit(groupId, value, shouldRender = false) {
@@ -1824,14 +1901,17 @@ function escapeRegExp(value) {
 }
 
 function collectUnitCandidates(group) {
+  const recordUnitHints = uniqueTexts([
+    ...group.records.map((record) => record.sourceUnit),
+    ...group.records.map((record) => record.unit),
+  ]).slice(0, 40);
   const values = [
     group.fileName,
     lastPathPart(group.fileName),
     group.sheetName,
-    ...group.records.map((record) => record.sourceUnit),
-    ...group.records.map((record) => record.unit),
+    ...recordUnitHints,
   ];
-  return uniqueTexts(values.flatMap(splitUnitCandidateText));
+  return uniqueTexts(uniqueTexts(values).flatMap(splitUnitCandidateText)).slice(0, 120);
 }
 
 function matchReferenceUnit(candidates) {

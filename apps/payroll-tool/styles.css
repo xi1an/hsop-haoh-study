@@ -494,6 +494,16 @@ input {
   font-size: 12px;
 }
 
+.queue-current {
+  margin: 6px 0 0;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sheet-list {
   grid-column: 1 / -1;
   display: grid;
